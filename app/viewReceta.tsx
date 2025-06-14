@@ -29,6 +29,14 @@ export default function ViewReceta() {
   const [recetas, setRecetas] = useState<Receta[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+    // Lista de términos (chips)
+  const [searchTerms, setSearchTerms] = useState<string[]>([]);
+  
+  // Input donde el usuario escribe antes de presionar Enter o Space
+  const [currentInput, setCurrentInput] = useState('');
+
+  // Estado para la categoría actual
   const [categoriaActual, setCategoriaActual] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,18 +65,17 @@ export default function ViewReceta() {
   // Buscar recetas por texto usando endpoint backend que busca por nombre o ingrediente
   const buscarRecetas = async (texto: string) => {
     if (texto.trim() === '') {
-      // Si la búsqueda está vacía, mostrar solo por categoría
       if (categoriaActual) fetchRecetasPorCategoria(categoriaActual);
       return;
     }
 
     setLoading(true);
     try {
-      const url = `${BASE_URL}/buscar_recetas?q=${encodeURIComponent(texto)}`;
+      const query = texto;
+      const url = `${BASE_URL}/buscar_recetas?q=${encodeURIComponent(texto)}&categoria=${encodeURIComponent(categoriaActual ?? '')}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error('Error al buscar recetas');
       const data = await res.json();
-      
       setRecetas(data);
     } catch (error) {
       Alert.alert('Error', 'No se pudieron buscar las recetas');
@@ -76,10 +83,27 @@ export default function ViewReceta() {
       setLoading(false);
     }
   };
+  // Cuando cambia el texto del input (antes de presionar enter)
+  const onInputChange = (text: string) => {
+    // Si detectas espacio o enter, agregas término
+    if (text.endsWith(' ') || text.endsWith('\n')) {
+      const trimmed = text.trim();
+      if (trimmed.length > 0 && !searchTerms.includes(trimmed)) {
+        const newTerms = [...searchTerms, trimmed];
+        setSearchTerms(newTerms);
+        buscarRecetas(newTerms.join(' '));
+      }
+      setCurrentInput('');
+    } else {
+      setCurrentInput(text);
+    }
+  };
 
-  const onSearchChange = (text: string) => {
-    setSearchQuery(text);
-    buscarRecetas(text);
+  // Elimina un término (chip)
+  const eliminarTermino = (term: string) => {
+    const filtered = searchTerms.filter(t => t !== term);
+    setSearchTerms(filtered);
+    buscarRecetas(filtered.join(' '));
   };
 
   return (
@@ -88,15 +112,34 @@ export default function ViewReceta() {
 
       <View style={styles.searchContainer}>
         <Feather name="search" size={20} color="#666" style={{ marginLeft: 8 }} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Buscar por nombre o ingrediente"
-          value={searchQuery}
-          onChangeText={onSearchChange}
-          autoCorrect={false}
-          autoCapitalize="none"
-          clearButtonMode="while-editing"
-        />
+        <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+          {searchTerms.map(term => (
+            <View key={term} style={styles.chip}>
+              <Text style={styles.chipText}>{term}</Text>
+              <TouchableOpacity onPress={() => eliminarTermino(term)}>
+                <Feather name="x" size={16} color="white" />
+              </TouchableOpacity>
+            </View>
+          ))}
+          <TextInput
+            style={[styles.searchInput, { flex: 1, minWidth: 50 }]}
+            placeholder="Buscar por nombre o ingrediente"
+            value={currentInput}
+            onChangeText={onInputChange}
+            autoCorrect={false}
+            autoCapitalize="none"
+            blurOnSubmit={false}
+            onSubmitEditing={() => {
+              // Para capturar enter si el usuario presiona submit sin espacio
+              if (currentInput.trim().length > 0 && !searchTerms.includes(currentInput.trim())) {
+                const newTerms = [...searchTerms, currentInput.trim()];
+                setSearchTerms(newTerms);
+                buscarRecetas(newTerms.join(' '));
+                setCurrentInput('');
+              }
+            }}
+          />
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
@@ -183,5 +226,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#444',
     marginTop: 4,
+  },
+
+  chip: {
+    flexDirection: 'row',
+    backgroundColor: '#fd292f',
+    borderRadius: 15,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    marginRight: 6,
+    marginBottom: 4,
+    alignItems: 'center',
+  },
+  chipText: {
+    color: 'white',
+    marginRight: 6,
+    fontWeight: '600',
   },
 });

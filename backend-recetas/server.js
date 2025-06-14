@@ -146,26 +146,53 @@ app.get('/receta_materiales/:recetaId', async (req, res) => {
 
 //GET recetas por nombre o ingrediente (query param ?q=texto)
 app.get('/buscar_recetas', async (req, res) => {
-  const { q } = req.query;
-  if (!q) return res.status(400).json({ error: 'Falta parámetro de búsqueda q' });
+  const q = req.query.q || '';
+  const categoria = req.query.categoria || '';
+  const palabras = q.trim().split(/\s+/);
+
+  if (palabras.length === 0) {
+    res.json([]);
+    return;
+  }
 
   try {
-    const searchText = `%${q.toLowerCase()}%`;
-    const result = await pool.query(
-      `
+    const operador = 'AND'; // o 'AND' según prefieras
+
+    // Condiciones para búsqueda de palabras en nombre, ingredientes o materiales
+    const condicionesPalabras = palabras.map((_, i) => `
+      (
+        r.nombre ILIKE '%' || $${i + 1} || '%' OR
+        ri.nombre ILIKE '%' || $${i + 1} || '%' OR
+        rm.material ILIKE '%' || $${i + 1} || '%'
+      )
+    `).join(` ${operador} `);
+
+    // Condición para categoría (si viene categoría)
+    const condicionCategoria = categoria
+      ? `AND r.tipo_comida = $${palabras.length + 1}`
+      : '';
+
+    const query = `
       SELECT DISTINCT r.*
       FROM recetas r
       LEFT JOIN receta_ingredientes ri ON r.id = ri.receta_id
-      WHERE LOWER(r.nombre) LIKE $1 OR LOWER(ri.nombre) LIKE $1
-      `,
-      [searchText]
-    );
+      LEFT JOIN receta_materiales rm ON r.id = rm.receta_id
+      WHERE (${condicionesPalabras})
+      ${condicionCategoria}
+    `;
+
+    // Parámetros para la consulta: palabras + categoria (si aplica)
+    const params = categoria ? [...palabras, categoria] : palabras;
+
+    const result = await pool.query(query, params);
     res.json(result.rows);
-  } catch (err) {
-    console.error(err);
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Error al buscar recetas' });
   }
 });
+
+
 
 
 // GET: Ingredientes y materiales del usuario de la despensa
@@ -174,15 +201,20 @@ app.get('/despensa/:usuarioId', async (req, res) => {
 
   try {
     const result = await pool.query(
-      `SELECT nombre FROM ingredientes WHERE usuario_id = $1`,
+      `
+      SELECT nombre, 'ingrediente' AS tipo FROM ingredientes WHERE usuario_id = $1
+      UNION
+      SELECT modelo AS nombre, 'maquina' AS tipo FROM maquinas WHERE usuario_id = $1
+      `,
       [usuarioId]
     );
-    res.json(result.rows); // [{ nombre: 'Arroz' }, { nombre: 'Sartén' }, ...]
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al obtener despensa completa' });
   }
 });
+
 
 //veces_usada
 app.post('/usar_receta/:id', async (req, res) => {
@@ -334,6 +366,23 @@ app.post('/ingredientes', async (req, res) => {
   }
 });
 
+// Actualizar ingrediente
+app.put('/ingredientes/:id', async (req, res) => {
+  const { id } = req.params;
+  const { nombre, tipo, unidad, cantidad, caducidad } = req.body;
+
+  try {
+    await pool.query(
+      `UPDATE ingredientes SET nombre=$1, tipo=$2, unidad=$3, cantidad=$4, caducidad=$5 WHERE id=$6`,
+      [nombre, tipo, unidad, cantidad, caducidad, id]
+    );
+    res.json({ message: 'Ingrediente actualizado correctamente' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al actualizar ingrediente' });
+  }
+});
+
 //GET ingredientes por usuarioId
 app.get('/ingredientes/:usuarioId', async (req, res) => {
   const { usuarioId } = req.params;
@@ -410,6 +459,24 @@ app.post('/maquinas', async (req, res) => {
     res.status(500).json({ success: false, message: "Error al agregar máquina" });
   }
 });
+
+// Actualizar máquina
+app.put('/maquinas/:id', async (req, res) => {
+  const { id } = req.params;
+  const { tipo, modelo } = req.body;
+
+  try {
+    await pool.query(
+      `UPDATE maquinas SET tipo = $1, modelo = $2 WHERE id = $3`,
+      [tipo, modelo, id]
+    );
+    res.json({ message: 'Máquina actualizada correctamente' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al actualizar máquina' });
+  }
+});
+
 
 // GET maquinas por usuarioId
 app.get('/maquinas/:usuarioId', async (req, res) => {

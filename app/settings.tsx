@@ -7,19 +7,56 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { BASE_URL } from "../config";
+import { BASE_URL } from '../config';
+import { useUser } from './context/UserContext';
+
+interface Usuario {
+  email: string;
+  password: string;
+  nombre: string;
+  premium: boolean;
+  // otros campos si existen...
+}
 
 export default function Settings() {
   const router = useRouter();
+  const { user } = useUser(); // supondremos que devuelve info básica o id para filtrar
 
-  // Datos de usuario simulados (los deberías cargar desde el backend o contexto)
-  const [email, setEmail] = useState('usuario@correo.com');
-  const [password, setPassword] = useState('********');
-  const [nombre, setNombre] = useState('Nombre Apellido');
-  const [premium, setPremium] = useState<boolean | null>(false);
+  const [usuario, setUsuario] = useState<Usuario | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchUsuario = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Aquí idealmente filtrarías por user.id o user.email
+        const res = await fetch(`${BASE_URL}/usuarios`);
+        if (!res.ok) throw new Error('Error al cargar usuario');
+
+        const data: Usuario[] = await res.json();
+
+        // Por simplicidad, tomamos el primer usuario (en producción filtra por el usuario autenticado)
+        if (data.length > 0) {
+          setUsuario(data[0]);
+        } else {
+          setError('No se encontró usuario');
+        }
+      } catch (err: any) {
+        setError(err.message || 'Error desconocido');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsuario();
+  }, [user]);
 
   const handleAdquirirPremium = () => {
     Alert.alert('Premium', '¡Próximamente!');
@@ -29,50 +66,76 @@ export default function Settings() {
     Alert.alert('Seguimiento', 'Próximamente con Premium');
   };
 
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#007BFF" />
+        <Text>Cargando usuario...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.centered}>
+        <Text style={{ color: 'red', marginBottom: 10 }}>{error}</Text>
+        <TouchableOpacity onPress={() => setError(null)}>
+          <Text style={{ color: '#007BFF' }}>Intentar de nuevo</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (!usuario) {
+    return (
+      <View style={styles.centered}>
+        <Text>No hay información de usuario disponible.</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: 20, paddingTop: 20 }}>
-        {/* Título */}
-        <Text style={styles.title}>{nombre}</Text>
+      <ScrollView
+        contentContainerStyle={{
+          paddingBottom: 120,
+          paddingHorizontal: 20,
+          paddingTop: 20,
+        }}
+      >
+        <Text style={styles.title}>{usuario.nombre}</Text>
 
-        {/* Email */}
         <Text style={styles.label}>Email</Text>
-        <TextInput
-          style={styles.input}
-          value={email}
-          editable={false}
-        />
+        <TextInput style={styles.input} value={usuario.email} editable={false} />
 
-        {/* Password */}
         <Text style={styles.label}>Password</Text>
         <TextInput
-          value={password}
+          value={'********'}
           secureTextEntry
           style={styles.input}
           editable={false}
         />
 
-        {/* Sección Premium */}
         <Text style={styles.label}>Premium</Text>
         <View style={styles.premiumContainer}>
-          <Text>{premium ? 'Sí' : 'No'}</Text>
+          <Text>{usuario.premium ? 'Sí' : 'No'}</Text>
         </View>
         <TouchableOpacity onPress={handleAdquirirPremium}>
           <Text style={styles.linkText}>¿Adquirir Premium?</Text>
         </TouchableOpacity>
 
-        {/* Botón Alergias */}
-        <TouchableOpacity style={styles.allergyButton} onPress={() => router.replace('/alergias')}>
+        <TouchableOpacity
+          style={styles.allergyButton}
+          onPress={() => router.replace('/alergias')}
+        >
           <Text style={styles.allergyButtonText}>Alergias</Text>
         </TouchableOpacity>
 
-        {/* Botón Seguimiento */}
         <TouchableOpacity style={styles.allergyButton} onPress={handleSeguimiento}>
           <Text style={styles.allergyButtonText}>Seguimiento</Text>
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Barra de navegación */}
       <View style={styles.navBar}>
         <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/homepage')}>
           <Feather name="home" size={32} color="#444" />
@@ -163,5 +226,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#444',
     marginTop: 4,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

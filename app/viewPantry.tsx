@@ -118,6 +118,54 @@ export default function ViewPantry() {
     }
   };
 
+  const saveChanges = async () => {
+  if (!selectedItem?.id) {
+    Alert.alert('Error', 'No se encontró el item para actualizar');
+    return;
+  }
+
+  let payload = {};
+  let url = '';
+
+  if (isCategoriaMaquina) {
+    payload = {
+      tipo: editData.tipo,
+      modelo: editData.modelo,
+    };
+    url = `${BASE_URL}/maquinas/${selectedItem.id}`;
+  } else {
+    payload = {
+      nombre: editData.nombre,
+      tipo: editData.tipo,
+      unidad: editData.unidad,
+      cantidad: Number(editData.cantidad),
+      caducidad: editData.caducidad,
+    };
+    url = `${BASE_URL}/ingredientes/${selectedItem.id}`;
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      Alert.alert('Éxito', 'Datos actualizados correctamente');
+      closeModal();
+      // Refrescar datos si usas algún state global o fetch
+    } else {
+      const errorData = await res.json();
+      Alert.alert('Error', errorData.error || 'Error al actualizar');
+    }
+  } catch (error) {
+    Alert.alert('Error', 'No se pudo conectar al servidor');
+    console.error(error);
+  }
+};
+
+
   useEffect(() => {
     fetchItems();
   }, [usuarioId, categoria]);
@@ -166,38 +214,6 @@ export default function ViewPantry() {
       ...prev,
       [field]: value,
     }));
-  };
-
-  // Guardar cambios editados (Aquí deberías llamar a tu API para actualizar en backend)
-  const saveChanges = async () => {
-    if (!usuarioId || !selectedItem) return;
-
-    const categoriaStr = Array.isArray(categoria) ? categoria[0] : categoria;
-    const normalizedTipo = normalizeText(categoriaStr);
-    const isMaquina = normalizedTipo === 'utensilios' || normalizedTipo === 'electrodomesticos';
-
-    const endpoint = isMaquina
-      ? `${BASE_URL}/maquinas/${usuarioId}/${selectedItem.id}`
-      : `${BASE_URL}/ingredientes/${usuarioId}/${selectedItem.id}`;
-
-    try {
-      const res = await fetch(endpoint, {
-        method: 'PUT', // o PATCH según tu API
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(editData),
-      });
-      if (!res.ok) throw new Error('Error al actualizar');
-
-      // Actualiza localmente la lista
-      setItems(prev => prev.map(item => item.id === selectedItem.id ? {...item, ...editData} : item));
-
-      Alert.alert('Éxito', 'Cambios guardados');
-      closeModal();
-    } catch (error) {
-      Alert.alert('Error', 'No se pudieron guardar los cambios');
-    }
   };
 
   return (
@@ -261,9 +277,12 @@ export default function ViewPantry() {
                     <Text style={styles.labelCustom}>Tipo:</Text>
                     <View style={styles.chipContainer}>
                       {['Utensilios', 'Electrodomésticos'].map(tipo => {
+                        // normalizar y quitar tilde en línea, sin función aparte
+                        const clean = (str: string) =>
+                          str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
                         const currentTipo = (editData.tipo ?? '').trim().toLowerCase();
-                        const tipoLower = tipo.toLowerCase();
-                        const isSelected = currentTipo === tipoLower;
+                        const tipoClean = clean(tipo);
+                        const isSelected = currentTipo === tipoClean;
                         return (
                           <TouchableOpacity
                             key={tipo}
